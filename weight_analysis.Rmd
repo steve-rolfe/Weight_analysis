@@ -1,0 +1,165 @@
+---
+title: "weight analysis"
+author: "Steve Rolfe"
+date: "27 October 2015"
+output: html_document
+---
+
+Standard code to clear the system and install required libraries
+```{r}
+rm(list=ls())
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+library(zoo)
+
+#load the multiplot function from the R cookbook from the R local directory
+pathnames <- list.files(pattern="[.]R$", path="./R/", full.names=TRUE)
+pathnames
+sapply(pathnames, FUN=source)
+
+```
+
+
+```{r}
+#plotting parameters for saving plots - output from ggplot
+#ggsave(file="filename.pdf",path="./output")
+#after calling ggplot
+
+#output from multiplot
+#pdf(file="filename.pdf")
+#before calling multiplot
+#dev.off()
+
+
+```
+
+Set up standard files names and the subset to plot
+```{r}
+setwd("C:/Users/Steve Rolfe/Google Drive/Phenomics/Weight_analysis")
+
+input_file="./data/BR7_final_weights.csv"
+output_file="./output/BR7_weight_out.csv"
+plant_codes="./data/BR7_plant_codes.csv"
+
+#subset of data to plot using grep format
+sset<-"BR7-0[1-5]1[1-3][1-4]"
+```
+
+Set up standard headers for the files - these need to be edited to be consistent
+The BR codes are suppled by IBERS but we should include the ASSYT codes where possible
+Standard headers should be
+BR_code,date_time, measurements (with informative names)
+Custom code will be needed to translate the BR_codes into useful information
+
+Read in the data and check that the required headers are there
+```{r}
+#read in the data
+wtdata<-read.csv(input_file,header=TRUE,stringsAsFactors = FALSE)
+if(is.object(wtdata)==FALSE) {stop(c("Can't open file:",input_file))}
+
+#check that there the required headings are there and throw an error if not
+if(is.na(match("BR_code",colnames(wtdata)))){stop("BR_code missing from input file header")}
+if(is.na(match("date_time",colnames(wtdata)))){stop("date_time missing from input file header")}
+head(wtdata)
+
+#this file contains info about the plants used
+plant_codes<-read.csv(plant_codes,header = TRUE,stringsAsFactors = FALSE)
+if(is.object(plant_codes)==FALSE) {stop(c("Can't open file:",plant_codes))}
+```
+
+We  deal with any specific coding here about names of plants, spores etc.
+Use the file plant_codes to keep the information organised
+```{r}
+#dpi offset from first data point
+#it's good to express everything as dpi but 1st data point might not be dpi
+#set the date of infection
+dpi_datetime<-"2015-7-6 00:00:00"
+
+#now set the factors manually
+wtdata$BR_code<-as.factor(wtdata$BR_code)
+
+#and set the plants,spores,etc
+#the plant code is the sixth character in the BR7 string
+wtdata$plant<-as.factor(substr(wtdata$BR_code,6,6))
+#the spore concentration code is the 8th character
+wtdata$spore<-as.factor(substr(wtdata$BR_code,8,8))
+#the repeat is the 9th
+wtdata$rep<-as.factor(substr(wtdata$BR_code,9,9))
+head(wtdata)
+
+#now merge the plant names with the data frame
+wtdata<-merge(wtdata,plant_codes,by.x="plant",by.y="plant_code")
+head(wtdata)
+
+#now do some standard time processing
+#use difftime to get the days since inoculation
+wtdata$dpi<-difftime(wtdata$date_time,dpi_datetime,units="days")
+#make it a factor when we just have a few days (but not when we want a continuous x scale)
+wtdata$dpi<-as.factor(wtdata$dpi)
+```
+
+Plot the data 
+Always use a subset function to keep things under control for plotting
+```{R}
+subdata<-subset(wtdata,grepl(sset,wtdata$BR_code))
+subdata<-droplevels(subdata)
+#plot the raw data as a boxplot
+p1<-ggplot(subdata,aes(x=spore,ShootFW))
+p1<-p1+geom_boxplot(aes(fill=spore),outlier.colour="red",outlier.size=3)
+p1<-p1+facet_wrap(~plant_name,nrow=1)
+p1
+
+p2<-ggplot(subdata,aes(x=spore,RootFW))
+p2<-p2+geom_boxplot(aes(fill=spore),outlier.colour="red",outlier.size=3)
+p2<-p2+facet_wrap(~plant_name,nrow=1)
+p2
+
+
+#pdf(file="./output/filename.pdf")
+multiplot(p1,p2)
+#dev.off()
+
+p3<-ggplot(subdata,aes(x=spore,ShootDW))
+p3<-p3+geom_boxplot(aes(fill=spore),outlier.colour="red",outlier.size=3)
+p3<-p3+facet_wrap(~plant_name,nrow=1)
+p3
+
+p4<-ggplot(subdata,aes(x=spore,RootDW))
+p4<-p4+geom_boxplot(aes(fill=spore),outlier.colour="red",outlier.size=3)
+p4<-p4+facet_wrap(~plant_name,nrow=1)
+p4
+
+multiplot(p3,p4)
+```
+Calculate root:shoot ratios
+```{R}
+subdata$RSDW<-subdata$RootDW/subdata$ShootDW
+subdata$RSFW<-subdata$RootFW/subdata$ShootFW
+subdata$biomass_allocDW<-subdata$RootDW/(subdata$RootDW+subdata$ShootDW)
+subdata$biomass_allocFW<-subdata$RootFW/(subdata$RootFW+subdata$ShootFW)
+
+p5<-ggplot(subdata,aes(x=spore,RSDW))
+p5<-p5+geom_boxplot(aes(fill=spore),outlier.colour="red",outlier.size=3)
+p5<-p5+facet_wrap(~plant_name,nrow=1)
+p5
+
+p6<-ggplot(subdata,aes(x=spore,biomass_allocDW))
+p6<-p6+geom_boxplot(aes(fill=spore),outlier.colour="red",outlier.size=3)
+p6<-p6+facet_wrap(~plant_name,nrow=1)
+p6
+multiplot(p5,p6)
+
+p7<-ggplot(subdata,aes(x=spore,RSFW))
+p7<-p7+geom_boxplot(aes(fill=spore),outlier.colour="red",outlier.size=3)
+p7<-p7+facet_wrap(~plant_name,nrow=1)
+p7
+
+p8<-ggplot(subdata,aes(x=spore,biomass_allocFW))
+p8<-p8+geom_boxplot(aes(fill=spore),outlier.colour="red",outlier.size=3)
+p8<-p8+facet_wrap(~plant_name,nrow=1)
+p8
+multiplot(p7,p8)
+
+write.csv(subdata,file=output_file)
+```
